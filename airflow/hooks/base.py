@@ -27,6 +27,7 @@ from airflow.typing_compat import Protocol
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 if TYPE_CHECKING:
+    from airflow.datasets import Dataset
     from airflow.models.connection import Connection  # Avoid circular imports.
 
 log = logging.getLogger(__name__)
@@ -105,6 +106,22 @@ class BaseHook(LoggingMixin):
     @classmethod
     def get_ui_field_behaviour(cls) -> dict[str, Any]:
         return {}
+
+    def add_input_dataset(self, dataset: Dataset):
+        from airflow.lineage.hook import get_hook_lineage_collector
+
+        get_hook_lineage_collector().add_input(dataset, self)
+
+    def add_output_dataset(self, dataset: Dataset):
+        from airflow.lineage.hook import get_hook_lineage_collector
+
+        get_hook_lineage_collector().add_output(dataset, self)
+
+    def ol_to_airflow_dataset(self, ol_dataset):
+        raise NotImplementedError()
+
+    def airflow_to_ol_dataset(self, dataset):
+        raise NotImplementedError()
 
 
 class DiscoverableHook(Protocol):

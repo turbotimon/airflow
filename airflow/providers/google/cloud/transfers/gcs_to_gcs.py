@@ -551,24 +551,24 @@ class GCSToGCSOperator(BaseOperator):
         if self.move_object:
             hook.delete(self.source_bucket, source_object)
 
-    def get_openlineage_facets_on_complete(self, task_instance):
-        """
-        Implementing _on_complete because execute method does preprocessing on internals.
-
-        This means we won't have to normalize self.source_object and self.source_objects,
-        destination bucket and so on.
-        """
-        from openlineage.client.run import Dataset
-
-        from airflow.providers.openlineage.extractors import OperatorLineage
-
-        return OperatorLineage(
-            inputs=[
-                Dataset(namespace=f"gs://{self.source_bucket}", name=source)
-                for source in sorted(self.resolved_source_objects)
-            ],
-            outputs=[
-                Dataset(namespace=f"gs://{self.destination_bucket}", name=target)
-                for target in sorted(self.resolved_target_objects)
-            ],
-        )
+    # def get_openlineage_facets_on_complete(self, task_instance):
+    #     """
+    #     Implementing _on_complete because execute method does preprocessing on internals.
+    #
+    #     This means we won't have to normalize self.source_object and self.source_objects,
+    #     destination bucket and so on.
+    #     """
+    #     from openlineage.client.run import Dataset
+    #
+    #     from airflow.providers.openlineage.extractors import OperatorLineage
+    #
+    #     return OperatorLineage(
+    #         inputs=[
+    #             Dataset(namespace=f"gs://{self.source_bucket}", name=source)
+    #             for source in sorted(self.resolved_source_objects)
+    #         ],
+    #         outputs=[
+    #             Dataset(namespace=f"gs://{self.destination_bucket}", name=target)
+    #             for target in sorted(self.resolved_target_objects)
+    #         ],
+    #     )

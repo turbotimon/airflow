@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from airflow.lineage.hook import get_hook_lineage_collector
 from airflow.listeners import hookimpl
 from airflow.providers.openlineage.extractors import ExtractorManager
 from airflow.providers.openlineage.plugins.adapter import OpenLineageAdapter
@@ -138,6 +139,7 @@ class OpenLineageListener:
                 end_time=end_date.isoformat(),
                 task=task_metadata,
             )
+            get_hook_lineage_collector().emit_datasets()
 
         on_success()
 
@@ -171,6 +173,7 @@ class OpenLineageListener:
                 end_time=end_date.isoformat(),
                 task=task_metadata,
             )
+            get_hook_lineage_collector().emit_datasets()
 
         on_failure()
 

@@ -41,6 +41,7 @@ from google.cloud.exceptions import GoogleCloudError
 from google.cloud.storage.retry import DEFAULT_RETRY
 from requests import Session
 
+from airflow.datasets import Dataset
 from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.providers.google.cloud.utils.helpers import normalize_directory_path
 from airflow.providers.google.common.consts import CLIENT_INFO
@@ -215,6 +216,11 @@ class GCSHook(GoogleBaseHook):
             destination_bucket.name,  # type: ignore[union-attr]
         )
 
+        self.add_input_dataset(Dataset(uri="gs://" + source_bucket.name + "/" + source_object.name))  # type: ignore[attr-defined]
+        self.add_output_dataset(
+            Dataset(uri="gs://" + destination_bucket.name + "/" + destination_object.name)  # type: ignore[union-attr]
+        )
+
     def rewrite(
         self,
         source_bucket: str,
@@ -265,6 +271,17 @@ class GCSHook(GoogleBaseHook):
             source_bucket.name,  # type: ignore[attr-defined]
             destination_object,
             destination_bucket.name,  # type: ignore[attr-defined]
+        )
+
+        self.add_input_dataset(
+            Dataset(
+                uri="gs://" + source_bucket.name + "/" + source_object.name  # type: ignore[union-attr,attr-defined]
+            )
+        )
+        self.add_output_dataset(
+            Dataset(
+                uri="gs://" + destination_bucket.name + "/" + destination_object  # type: ignore[union-attr,attr-defined]
+            )
         )
 
     @overload
@@ -523,6 +540,8 @@ class GCSHook(GoogleBaseHook):
         client = self.get_conn()
         bucket = client.bucket(bucket_name, user_project=user_project)
         blob = bucket.blob(blob_name=object_name, chunk_size=chunk_size)
+
+        self.add_output_dataset(Dataset(uri="gs://" + bucket_name + "/" + object_name))
 
         if metadata:
             blob.metadata = metadata
@@ -1325,6 +1344,15 @@ class GCSHook(GoogleBaseHook):
             if source_blob.crc32c != destination_blob.crc32c:
                 to_rewrite_blobs.add(source_blob)
         return to_copy_blobs, to_delete_blobs, to_rewrite_blobs
+
+    def ol_to_airflow_dataset(self, ol_dataset) -> Dataset:
+        return Dataset(uri=f"gs://{ol_dataset.namespace}/{ol_dataset.name}")
+
+    def airflow_to_ol_dataset(self, dataset: Dataset):
+        from openlineage.client.run import Dataset as OpenLineageDataset
+
+        bucket, blob = _parse_gcs_url(dataset.uri)
+        return OpenLineageDataset(namespace=f"gs://{bucket}", name=blob)
 
 
 def gcs_object_is_directory(bucket: str) -> bool:

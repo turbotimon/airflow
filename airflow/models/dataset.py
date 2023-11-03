@@ -66,6 +66,8 @@ class DatasetModel(Base):
     created_at = Column(UtcDateTime, default=timezone.utcnow, nullable=False)
     updated_at = Column(UtcDateTime, default=timezone.utcnow, onupdate=timezone.utcnow, nullable=False)
     is_orphaned = Column(Boolean, default=False, nullable=False, server_default="0")
+    # Whether the dataset was created automatically from Hook instrumentation
+    automatic = Column(Boolean, default=False, nullable=False, server_default="0")
 
     consuming_dags = relationship("DagScheduleDatasetReference", back_populates="dataset")
     producing_tasks = relationship("TaskOutletDatasetReference", back_populates="dataset")

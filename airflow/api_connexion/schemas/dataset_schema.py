@@ -73,6 +73,7 @@ class DatasetSchema(SQLAlchemySchema):
     updated_at = auto_field()
     producing_tasks = fields.List(fields.Nested(TaskOutletDatasetReferenceSchema))
     consuming_dags = fields.List(fields.Nested(DagScheduleDatasetReferenceSchema))
+    automatic = auto_field()
 
 
 class DatasetCollection(NamedTuple):

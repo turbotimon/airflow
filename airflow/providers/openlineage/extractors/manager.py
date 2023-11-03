@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import os
 from contextlib import suppress
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Tuple, cast
+from urllib.parse import urlparse
+
+from openlineage.client.facet import SchemaDatasetFacet, SchemaField
+from openlineage.client.run import Dataset
 
 from airflow.configuration import conf
+from airflow.lineage.entities import File, Table
 from airflow.providers.openlineage.extractors import BaseExtractor, OperatorLineage
 from airflow.providers.openlineage.extractors.base import DefaultExtractor
 from airflow.providers.openlineage.extractors.bash import BashExtractor
@@ -82,6 +87,10 @@ class ExtractorManager(LoggingMixin):
             f"airflow_run_id={dagrun.run_id} "
         )
 
+        from airflow.lineage.hook import get_hook_lineage_collector
+
+        self.log.debug(f"Collected lineage from hooks: {get_hook_lineage_collector().has_collected()}")
+
         if extractor:
             # Extracting advanced metadata is only possible when extractor for particular operator
             # is defined. Without it, we can't extract any input or output data.
@@ -104,6 +113,13 @@ class ExtractorManager(LoggingMixin):
                 self.log.warning(
                     "Failed to extract metadata using found extractor %s - %s %s", extractor, e, task_info
                 )
+        elif get_hook_lineage_collector().has_collected():
+            self.log.debug("Found lineage collected from hooks")
+            inputs, outputs = get_hook_lineage_collector().collected
+            return OperatorLineage(
+                inputs=[input[1].airflow_to_ol_dataset(input[0]) for input in inputs],
+                outputs=[output[1].airflow_to_ol_dataset(output[0]) for output in outputs],
+            )
         else:
             self.log.debug("Unable to find an extractor %s", task_info)
 
@@ -168,22 +184,46 @@ class ExtractorManager(LoggingMixin):
             if d:
                 task_metadata.outputs.append(d)
 
-    @staticmethod
-    def convert_to_ol_dataset(obj):
-        from openlineage.client.run import Dataset
-
-        from airflow.lineage.entities import Table
-
-        if isinstance(obj, Dataset):
-            return obj
-        elif isinstance(obj, Table):
+    @classmethod
+    def convert_to_ol_dataset(cls, obj):
+        if isinstance(obj, Table):
             return Dataset(
-                namespace=f"{obj.cluster}",
+                namespace=obj.cluster,
                 name=f"{obj.database}.{obj.name}",
-                facets={},
+                facets={
+                    "schema": SchemaDatasetFacet(
+                        fields=[
+                            SchemaField(
+                                name=column.name,
+                                type=column.data_type,
+                                description=column.description,
+                            )
+                            for column in obj.columns
+                        ]
+                    )
+                }
+                if obj.columns
+                else {},
             )
+
+        elif isinstance(obj, File):
+            return cls.convert_from_object_storage_uri(obj.url)
         else:
             return None
+
+    @staticmethod
+    def convert_from_object_storage_uri(uri: str) -> Dataset | None:
+        try:
+            scheme, netloc, path, params, _, _ = cast(Tuple[str, str, str, str, str, str], urlparse(uri))
+        except Exception:
+            return None
+        if scheme.startswith("s3"):
+            return Dataset(namespace=f"s3://{netloc}", name=path)
+        elif scheme.startswith(("gcs", "gs")):
+            return Dataset(namespace=f"gs://{netloc}", name=path)
+        elif "/" not in uri:
+            return None
+        return Dataset(namespace=scheme, name=f"/{netloc}{path}")
 
     def validate_task_metadata(self, task_metadata) -> OperatorLineage | None:
         try:

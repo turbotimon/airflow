@@ -39,6 +39,8 @@ from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from airflow.datasets import Dataset
+
 if TYPE_CHECKING:
     with suppress(ImportError):
         from aiobotocore.client import AioBaseClient
@@ -1398,8 +1400,12 @@ class S3Hook(AwsBaseHook):
             file_path.parent.mkdir(exist_ok=True, parents=True)
 
             file = open(file_path, "wb")
+
+            self.add_output_dataset(Dataset(uri="file://" + str(file_path)))
+
         else:
             file = NamedTemporaryFile(dir=local_path, prefix="airflow_tmp_", delete=False)  # type: ignore
+            self.add_output_dataset(Dataset("file://" + str(local_path or gettempdir())))
 
         with file:
             s3_obj.download_fileobj(
@@ -1407,6 +1413,8 @@ class S3Hook(AwsBaseHook):
                 ExtraArgs=self.extra_args,
                 Config=self.transfer_config,
             )
+
+        self.add_input_dataset(Dataset(uri="s3://" + bucket_name if bucket_name else +"/" + key))  # type: ignore
 
         return file.name
 

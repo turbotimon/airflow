@@ -168,6 +168,7 @@ class S3ToGCSOperator(S3ListOperator):
         if poll_interval <= 0:
             raise ValueError("Invalid value for poll_interval. Expected value greater than 0")
         self.poll_interval = poll_interval
+        self.transferred_s3_objects: Sequence[str] = []
 
     def _check_inputs(self) -> None:
         if self.dest_gcs and not gcs_object_is_directory(self.dest_gcs):
@@ -191,6 +192,8 @@ class S3ToGCSOperator(S3ListOperator):
         )
         if not self.replace:
             s3_objects = self.exclude_existing_objects(s3_objects=s3_objects, gcs_hook=gcs_hook)
+
+        self.transferred_s3_objects = s3_objects
 
         s3_hook = S3Hook(aws_conn_id=self.aws_conn_id, verify=self.verify)
         if not s3_objects:
@@ -246,6 +249,7 @@ class S3ToGCSOperator(S3ListOperator):
         return s3_object
 
     def transfer_files(self, s3_objects: list[str], gcs_hook: GCSHook, s3_hook: S3Hook) -> None:
+        self.log.info("TRANSFERRING")
         if s3_objects:
             dest_gcs_bucket, dest_gcs_object_prefix = _parse_gcs_url(self.dest_gcs)
             for obj in s3_objects:
@@ -345,4 +349,16 @@ class S3ToGCSOperator(S3ListOperator):
         return CloudDataTransferServiceHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.google_impersonation_chain,
+        )
+
+    def get_openlineage_facets_on_start(self):
+        from openlineage.client.run import Dataset
+
+        from airflow.lineage.hook import get_hook_lineage_collector
+        from airflow.providers.openlineage.extractors import OperatorLineage
+
+        _, outputs = get_hook_lineage_collector().collected
+        return OperatorLineage(
+            inputs=[Dataset(namespace="s3://" + self.bucket, name=x) for x in self.transferred_s3_objects],
+            outputs=outputs,
         )

@@ -45,6 +45,7 @@ from airflow.exceptions import (
     DeserializingResultError,
     RemovedInAirflow3Warning,
 )
+from airflow.lineage.hook import get_hook_lineage_collector
 from airflow.models.baseoperator import BaseOperator
 from airflow.models.skipmixin import SkipMixin
 from airflow.models.taskinstance import _CURRENT_CONTEXT
@@ -303,6 +304,68 @@ class ShortCircuitOperator(PythonOperator, SkipMixin):
         self.log.info("Done.")
         # returns the result of the super execute method as it is instead of returning None
         return condition
+
+    def get_openlineage_facets_on_complete(self):
+        from airflow.providers.openlineage.extractors import OperatorLineage
+
+        inputs, outputs = get_hook_lineage_collector().collected
+        if inputs or outputs:
+            return OperatorLineage(inputs=inputs, outputs=outputs)
+        else:
+            return self._execute_extraction()
+
+    def _execute_extraction(self):
+        from openlineage.client.facet import SourceCodeJobFacet
+
+        from airflow.providers.openlineage.extractors.base import OperatorLineage
+        from airflow.providers.openlineage.plugins.facets import (
+            UnknownOperatorAttributeRunFacet,
+            UnknownOperatorInstance,
+        )
+        from airflow.providers.openlineage.utils.utils import (
+            get_filtered_unknown_operator_keys,
+            is_source_enabled,
+        )
+
+        source_code = self.get_source_code(self.python_callable)
+        job_facet: dict = {}
+        if is_source_enabled() and source_code:
+            job_facet = {
+                "sourceCode": SourceCodeJobFacet(
+                    language="python",
+                    # We're on worker and should have access to DAG files
+                    source=source_code,
+                )
+            }
+        return OperatorLineage(
+            job_facets=job_facet,
+            run_facets={
+                # The PythonOperator is recorded as an "unknownSource" even though we have an
+                # extractor, as the data lineage cannot be determined from the operator
+                # directly.
+                "unknownSourceAttribute": UnknownOperatorAttributeRunFacet(
+                    unknownItems=[
+                        UnknownOperatorInstance(
+                            name="PythonOperator",
+                            properties=get_filtered_unknown_operator_keys(self),
+                        )
+                    ]
+                )
+            },
+        )
+
+    def get_source_code(self, callable: Callable) -> str | None:
+        try:
+            return inspect.getsource(callable)
+        except TypeError:
+            # Trying to extract source code of builtin_function_or_method
+            return str(callable)
+        except OSError:
+            self.log.warning(
+                "Can't get source code facet of PythonOperator %s",
+                self.task_id,
+            )
+        return None
 
 
 class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):

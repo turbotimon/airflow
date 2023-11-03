@@ -28,8 +28,9 @@ class Dataset:
 
     uri: str = attr.field(validator=[attr.validators.min_len(1), attr.validators.max_len(3000)])
     extra: dict[str, Any] | None = None
+    automatic: bool = False
 
-    __version__: ClassVar[int] = 1
+    __version__: ClassVar[int] = 2
 
     @uri.validator
     def _check_uri(self, attr, uri: str):

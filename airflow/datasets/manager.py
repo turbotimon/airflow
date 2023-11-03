@@ -52,7 +52,11 @@ class DatasetManager(LoggingMixin):
         session.flush()
 
         for dataset_model in dataset_models:
-            self.notify_dataset_created(dataset=Dataset(uri=dataset_model.uri, extra=dataset_model.extra))
+            self.notify_dataset_created(
+                dataset=Dataset(
+                    uri=dataset_model.uri, extra=dataset_model.extra, automatic=dataset_model.automatic
+                )
+            )
 
     def register_dataset_change(
         self, *, task_instance: TaskInstance, dataset: Dataset, extra=None, session: Session, **kwargs
